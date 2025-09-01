@@ -3,3 +3,4 @@ uvicorn
 jinja2
 pydantic
 python-multipart
+sqlite3-binary
