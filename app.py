@@ -220,7 +220,7 @@ header a:hover {
 
 h2 {
   font-family: 'Orbitron', sans-serif;
-  color: #0a1f44;
+  color: #FFD700;   /* gold */
 }
 
 button, input, select {
