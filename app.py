@@ -600,54 +600,74 @@ async def budgets_save(request: Request):
 # -------- Daily View --------
 @app.get("/daily", response_class=HTMLResponse)
 async def daily_page():
-    days = daily_aggregates()
-    running = 0.0   # ✅ start clean, no carry-over
-    data = []
+    today = date.today()
+    start = month_start(today.year, today.month)
+    end = month_end(today.year, today.month)
 
-    for d in days:
-        net = d["income"] - d["expense"]
-        running += net if (d["income"] or d["expense"]) else 0  # ✅ only move if there’s activity
-        data.append({
-            "date": d["date"],
-            "income": d["income"],
-            "expense": d["expense"],
-            "net": net,
-            "running": running
-        })
+    # --- pull posted transactions ---
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT date(ts) as d,
+               SUM(CASE WHEN kind='income' THEN amount ELSE 0 END) as inc,
+               SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) as exp
+        FROM transactions
+        WHERE date(ts) BETWEEN ? AND ?
+        GROUP BY date(ts)
+    """, (start.isoformat(), end.isoformat()))
+    posted = {r["d"]: (float(r["inc"] or 0), float(r["exp"] or 0)) for r in cur.fetchall()}
+    conn.close()
 
-    labels = [d["date"] for d in data]
-    inc = [d["income"] for d in data]
-    exp = [d["expense"] for d in data]
-    run = [d["running"] for d in data]
+    # --- merge in scheduled occurrences ---
+    occs = all_occurrences(end)
+    for o in occs:
+        if start.isoformat() <= o["date"] <= end.isoformat():
+            inc, exp = posted.get(o["date"], (0, 0))
+            if o["kind"] == "income":
+                inc += o["amount"]
+            else:
+                exp += o["amount"]
+            posted[o["date"]] = (inc, exp)
+
+    # --- build daily balances ---
+    days = []
+    running = float(get_param("starting_balance", "0") or 0)
+    for d in daterange(start, end):
+        ds = d.isoformat()
+        inc, exp = posted.get(ds, (0, 0))
+        if inc or exp:
+            running += (inc - exp)
+        days.append({"date": ds, "inc": inc, "exp": exp, "running": running})
+
+    labels = [d["date"] for d in days]
+    incs = [d["inc"] for d in days]
+    exps = [d["exp"] for d in days]
+    runs = [d["running"] for d in days]
 
     table = "".join(
-        f"<tr><td>{d['date']}</td><td>${d['income']:.2f}</td><td>${d['expense']:.2f}</td>"
-        f"<td>${d['net']:.2f}</td><td>${d['running']:.2f}</td></tr>"
-        for d in data
+        f"<tr><td>{d['date']}</td><td>${d['inc']:.2f}</td><td>${d['exp']:.2f}</td><td>${d['running']:.2f}</td></tr>"
+        for d in days
     )
 
     return HTMLResponse(f"""<!doctype html><html><head>{STYLE}
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    </head><body>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
     {NAVBAR}
     <div class="card"><canvas id="lineChart"></canvas></div>
     <div class="card">
-    <table><tr><th>Date</th><th>Income</th><th>Expense</th><th>Net</th><th>Running</th></tr>{table}</table>
+    <table><tr><th>Date</th><th>Income</th><th>Expense</th><th>Balance</th></tr>{table}</table>
     </div>
     <script>
     const ctx = document.getElementById('lineChart');
     new Chart(ctx, {{
       type:'line',
       data:{{labels:{labels},datasets:[
-        {{label:'Income',data:{inc},borderColor:'green',fill:false}},
-        {{label:'Expense',data:{exp},borderColor:'red',fill:false}},
-        {{label:'Running',data:{run},borderColor:'blue',fill:false}}
+        {{label:'Income',data:{incs},borderColor:'green',fill:false}},
+        {{label:'Expense',data:{exps},borderColor:'red',fill:false}},
+        {{label:'Balance',data:{runs},borderColor:'blue',fill:false}}
       ]}},
       options:{{responsive:true,plugins:{{legend:{{position:'top'}}}}}}
     }});
     </script>
-    </body></html>""")
-    
+    </body></html>""")    
    # -------- Occurrences Generator --------
 def generate_occurrences_for_schedule(sched, until: date):
     """Generate all occurrences from a schedule up to a cutoff date, anchored to start_date + dow."""
