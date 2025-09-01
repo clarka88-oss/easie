@@ -774,7 +774,7 @@ async def calendar_page(month: str = ""):
                 f"<div class='income'>+${d['inc']:.2f}</div>"
                 f"<div class='expense'>-${d['exp']:.2f}</div>"
                 f"<div class='savings'></div>"
-                f"<div><em>${d['running']:.2f}</em></div>"
+                f"<div class='balance'>${d['running']:.2f}</div>"
                 f"</div>"
             )
 
@@ -800,6 +800,7 @@ async def calendar_page(month: str = ""):
     .income {{ color:green; font-weight:bold; font-size:0.9rem; }}
     .expense {{ color:red; font-weight:bold; font-size:0.9rem; }}
     .savings {{ color:blue; font-weight:bold; font-size:0.9rem; }}
+    .balance {{ color:#0a1f44; font-weight:bold; font-size:1rem; margin-top:0.3rem; }}
     .modal {{ display:none; position:fixed; z-index:2000; padding-top:100px; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.6); }}
     .modal-content {{ background:#0a1f44; color:#FFD700; padding:20px; border-radius:12px; border:2px solid #FFD700; width:400px; margin:auto; animation: fadein .3s; }}
     .modal-content h2 {{ color:#FFD700; font-family:'Orbitron', sans-serif; margin-top:0; }}
