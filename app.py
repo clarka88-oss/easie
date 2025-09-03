@@ -334,6 +334,34 @@ def calendar_series_for_month(y: int, m: int):
         incs.append(round(inc, 2))
         exps.append(round(exp, 2))
         runs.append(round(running, 2))
+def calendar_balance_for_day(d: date) -> float:
+    # start with balance up to the day before
+    running = running_balance_through(d - timedelta(days=1))
+
+    # posted transactions for the day
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT SUM(CASE WHEN kind='income'  THEN amount ELSE 0 END) AS inc,
+               SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) AS exp
+        FROM transactions
+        WHERE date(ts) = ?
+    """, (d.isoformat(),))
+    row = cur.fetchone()
+    inc = float(row["inc"] or 0)
+    exp = float(row["exp"] or 0)
+    conn.close()
+    running += (inc - exp)
+
+    # add occurrences for the day
+    occs = all_occurrences(d)
+    for o in occs:
+        if o["date"] == d.isoformat():
+            if o["kind"] == "income":
+                running += float(o["amount"])
+            else:
+                running -= float(o["amount"])
+
+    return running
 
     return labels, incs, exps, runs
 # ---------------- App ----------------
@@ -640,7 +668,7 @@ def dashboard():
     conn.close()
 
     # 2) today's balance (same as calendar)
-    todays_balance = running_balance_through(today)
+    todays_balance = calendar_balance_for_day(today)
 
     # Build budgets table rows without f-strings
     budgets_rows = []
@@ -663,7 +691,10 @@ def dashboard():
         + '<meta name="apple-mobile-web-app-capable" content="yes">'
         + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
         + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
-
+ + '<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png">'
+    + '<link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-167.png">'
+    + '<link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">'
+    + '<link rel="apple-touch-icon" sizes="120x120" href="/static/icons/icon-120.png">'
         + "</head><body>"
     '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
     + NAVBAR
@@ -990,6 +1021,10 @@ async def daily_page(month: str = ""):
         + '<meta name="apple-mobile-web-app-capable" content="yes">'
         + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
         + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+         + '<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png">'
+    + '<link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-167.png">'
+    + '<link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">'
+    + '<link rel="apple-touch-icon" sizes="120x120" href="/static/icons/icon-120.png">'
 """
         '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -1511,7 +1546,7 @@ async def schedule_delete(sid:int):
     conn = get_db(); cur = conn.cursor()
     cur.execute("DELETE FROM schedules WHERE id=?", (sid,))
     conn.commit(); conn.close()
-    return RedirectResponse("/schedules", status_code=303)
+    return RedirectResponse("/schedules", status_code=303)l
 
 
 @app.post("/schedules/clear")
@@ -1539,7 +1574,10 @@ async def occ_view(oid:int):
       + '<meta name="apple-mobile-web-app-capable" content="yes">'
       + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
       + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
-
+      + '<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png">'
+      + '<link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-167.png">'
+      + '<link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">'
+      + '<link rel="apple-touch-icon" sizes="120x120" href="/static/icons/icon-120.png">'
     + "</head><body>"
     + NAVBAR
     + "<div class='card'>"
@@ -1594,7 +1632,10 @@ async def glossary_page():
       + '<meta name="apple-mobile-web-app-capable" content="yes">'
       + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
       + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
-
+    + '<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png">'
+    + '<link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-167.png">'
+    + '<link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">'
+    + '<link rel="apple-touch-icon" sizes="120x120" href="/static/icons/icon-120.png">'
     + "</head><body>"
     + "<link href='https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css' rel='stylesheet'>"
     + NAVBAR
@@ -1800,6 +1841,10 @@ async def wishlist_edit(wid: int):
         + '<meta name="apple-mobile-web-app-capable" content="yes">'
         + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
         + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+     + '<link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-180.png">'
+    + '<link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-167.png">'
+    + '<link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">'
+    + '<link rel="apple-touch-icon" sizes="120x120" href="/static/icons/icon-120.png">'
 
     + "</head><body>"
     + NAVBAR
