@@ -363,6 +363,34 @@ def calendar_balance_for_day(d: date) -> float:
                 running += float(o["amount"])
             else:
                 running -= float(o["amount"])
+def balance_through_inclusive(day: date) -> float:
+    """Return balance up to and including `day` with transactions + occurrences."""
+    # Start from starting balance
+    bal = float(get_param("starting_balance", "0") or 0)
+
+    # Transactions
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT
+          COALESCE(SUM(CASE WHEN kind='income'  THEN amount END),0) -
+          COALESCE(SUM(CASE WHEN kind='expense' THEN amount END),0)
+        FROM transactions
+        WHERE date(ts) <= ?
+    """, (day.isoformat(),))
+    tx_net = float(cur.fetchone()[0] or 0.0)
+    conn.close()
+    bal += tx_net
+
+    # Occurrences
+    occs = all_occurrences(day)
+    for o in occs:
+        if o["date"] <= day.isoformat():
+            if o["kind"] == "income":
+                bal += float(o["amount"])
+            else:
+                bal -= float(o["amount"])
+
+    return bal
 
     return running
 
@@ -1195,7 +1223,8 @@ async def calendar_page(month: str = ""):
     days = []
 
     # Rollover: start this month from balance as of day before the 1st
-    running = running_balance_through(start - timedelta(days=1))
+    running = balance_through_inclusive(start - timedelta(days=1))
+
 
     # weekday of 1st of month (Mon=0 … Sun=6)
     first_weekday = start.weekday()
@@ -2066,4 +2095,3 @@ def _startup(): init_db()
 if __name__=="__main__":
     init_db(); import uvicorn
     uvicorn.run(app,host="0.0.0.0",port=8000,reload=True)
-
