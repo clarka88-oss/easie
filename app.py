@@ -1546,7 +1546,7 @@ async def schedule_delete(sid:int):
     conn = get_db(); cur = conn.cursor()
     cur.execute("DELETE FROM schedules WHERE id=?", (sid,))
     conn.commit(); conn.close()
-    return RedirectResponse("/schedules", status_code=303)l
+    return RedirectResponse("/schedules", status_code=303)
 
 
 @app.post("/schedules/clear")
