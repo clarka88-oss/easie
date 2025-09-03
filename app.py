@@ -12,11 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles   # ✅ add this
 from pydantic import BaseModel, condecimal
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-
+from openai import OpenAI
+import os
 DB_PATH = os.getenv("EASIE_DB", "easie.db")
 
 # ---------------- App ----------------
 app = FastAPI(title="EASIE")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ✅ Mount static so /static/... works
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -96,7 +98,11 @@ def init_db():
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )""")
     conn.commit()
-
+ # --- Track AI Advisor interest ---
+    cur.execute("""CREATE TABLE IF NOT EXISTS advisor_interest(
+        id INTEGER PRIMARY KEY,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""")
     # Budgets seed at 0
     cur.execute("SELECT COUNT(*) FROM budgets")
     if cur.fetchone()[0] == 0:
@@ -141,6 +147,7 @@ def get_param(key: str, default: str="") -> str:
     conn = get_db(); cur = conn.cursor()
     cur.execute("SELECT value FROM params WHERE key=?",(key,))
     row = cur.fetchone(); conn.close(); return row[0] if row else default
+    
     # -------- Daily Aggregates --------
 def daily_aggregates(date_from: Optional[str]=None, date_to: Optional[str]=None):
     conn = get_db(); cur = conn.cursor()
@@ -435,35 +442,62 @@ table {
   border: 2px solid #FFD700;
   background: #FFFACD;
 }
-/* ✅ Tooltip style */
-.tooltip {
-  position: relative;
-  cursor: help;
-  border-bottom: 1px dotted #FFD700; /* gold underline */
-}
-
-.tooltip .tooltiptext {
-  visibility: hidden;
-  width: 220px;
-  background-color: #0a1f44; /* navy */
-  color: #f5f5f0;           /* off-white */
-  text-align: left;
-  border-radius: 6px;
-  padding: 0.5rem;
-  position: absolute;
-  z-index: 1001;
-  bottom: 125%; /* show above word */
-  left: 50%;
-  margin-left: -110px;
-  opacity: 0;
-  transition: opacity 0.3s;
-  border: 1px solid #FFD700;
-}
-
 .tooltip:hover .tooltiptext {
   visibility: visible;
   opacity: 1;
 }
+
+/* ---------- Intro.js Overrides for E.A.S.I.E. ---------- */
+.introjs-tooltip {
+  background: #0a1f44 !important;   /* deep navy */
+  color: #FFD700 !important;        /* gold text */
+  border: 2px solid #FFD700 !important;
+  border-radius: 10px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+}
+
+.introjs-tooltip .introjs-tooltiptext {
+  color: #FFD700 !important;   /* ensure body text is gold */
+}
+
+.introjs-tooltip h1,
+.introjs-tooltip h2,
+.introjs-tooltip h3,
+.introjs-tooltip h4 {
+  color: #FFD700 !important;   /* gold headings */
+  font-family: 'Orbitron', sans-serif;
+}
+
+.introjs-button {
+  background: #FFD700 !important;
+  color: #0a1f44 !important;
+  border-radius: 6px !important;
+  font-weight: bold;
+  border: none !important;
+}
+
+.introjs-button:hover {
+  background: #B8860B !important;  /* bronze hover */
+  color: #fff !important;
+}
+
+@media (max-width: 768px) {
+  body { margin: 1rem; }
+  .card { padding: .8rem; }
+  table { font-size: .9rem; }
+  th, td { padding: .3rem; }
+  header h1 { font-size: 1.4rem; }
+  header small { font-size: .75rem; }
+  button, input, select { font-size: .9rem; }
+}
+
+@media (max-width: 480px) {
+  header h1 { font-size: 1.2rem; }
+  .card { margin-bottom: .8rem; }
+  .nav a { display:block; margin:.4rem 0; }
+}
+
 </style>
 """
 # -------- Navbar (shared across all pages) --------
@@ -471,20 +505,49 @@ NAVBAR = """
 <header>
   <h1>E.A.S.I.E</h1>
   <small>(Expense & Savings / Income Engine)</small><br>
-  <a href="/home">🏠 Home</a>
-  <a href="/wishlist">Wishlist</a>
-  <a href="/budgets">Budgets</a>
-  <a href="/daily">Daily</a>
-  <a href="/calendar">Calendar</a>
-  <a href="/schedules">Schedules</a>
-  <a href="/settings">Settings</a>
-  <a href="/glossary">Glossary</a>
+  <a id="nav-home" href="/home">🏠 Home</a>
+  <a id="nav-wishlist" href="/wishlist">Wishlist</a>
+  <a id="nav-budgets" href="/budgets">Budgets</a>
+  <a id="nav-daily" href="/daily">Daily</a>
+  <a id="nav-calendar" href="/calendar">Calendar</a>
+  <a id="nav-schedules" href="/schedules">Schedules</a>
+  <a id="nav-settings" href="/settings">Settings</a>
+  <a id="nav-glossary" href="/glossary">Glossary</a>
+  <a href="javascript:void(0)" onclick="startTutorial()">❓ Help</a>
+  <a id="nav-advisor" href="/advisor">AI Advisor</a>
+
 </header>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/static/sw.js").then(() => {
+    console.log("✅ Service worker registered");
+  });
+}
+</script>
+<script>
+let deferredPrompt;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.createElement("button");
+  btn.textContent = "📲 Install E.A.S.I.E.";
+  btn.style = "margin-top:1rem; padding:.6rem 1.2rem; font-weight:bold; background:#FFD700; border:none; border-radius:6px; color:#0a1f44;";
+  btn.onclick = async () => {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log("User response:", outcome);
+    deferredPrompt = null;
+  };
+  document.body.appendChild(btn);
+});
+</script>
+
 """
 ## -------- Landing animation --------
 WELCOME_HTML = """<!doctype html>
 <html>
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
   <meta charset="utf-8">
   <title>Welcome</title>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Rajdhani:wght@400&display=swap" rel="stylesheet">
@@ -597,50 +660,69 @@ def dashboard():
     # Build HTML (no f-strings, so JS braces are safe)
     html = (
         "<!doctype html><html><head>" + STYLE + "</head><body>"
-        + NAVBAR
-        + "<h2>📊 Dashboard</h2>"
+    '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
+    + NAVBAR
+    + "<h2>📊 Dashboard</h2>"
 
-        # Today’s Balance card (clickable → calendar)
-        + "<a href='/calendar' style='text-decoration:none;'>"
-          + "<div class='card' id='todayBalanceCard'>"
-            + "<h3>Today's Balance</h3>"
-            + "<p id='todayBalanceValue' style='font-size:1.6rem; font-weight:800; color:#000; margin:.25rem 0;'>"
-              + "$" + ("%.2f" % todays_balance)
-            + "</p>"
-            + "<small style='opacity:.8;'>(click to open calendar)</small>"
-          + "</div>"
-        + "</a>"
+    # Today’s Balance card
+    + "<a href='/calendar' style='text-decoration:none;'>"
+      + "<div class='card' id='todayBalanceCard'>"
+        + "<h3>Today's Balance</h3>"
+        + "<p id='todayBalanceValue' style='font-size:1.6rem; font-weight:800; color:#000; margin:.25rem 0;'>"
+          + "$" + ("%.2f" % todays_balance)
+        + "</p>"
+        + "<small style='opacity:.8;'>(click to open calendar)</small>"
+      + "</div>"
+    + "</a>"
 
-        # Weekly budgets table
-        + "<div class='card'>"
-          + "<h3>📅 Week " + str(today.isocalendar()[1]) + " Budgets Left</h3>"
-          + "<table>"
-            + "<tr><th>Category</th><th>Weekly Budget</th><th>Remaining</th></tr>"
-            + budgets_rows_html
-          + "</table>"
-        + "</div>"
+    # Weekly budgets table
+    + "<div class='card'>"
+      + "<h3>📅 Week " + str(today.isocalendar()[1]) + " Budgets Left</h3>"
+      + "<table>"
+        + "<tr><th>Category</th><th>Weekly Budget</th><th>Remaining</th></tr>"
+        + budgets_rows_html
+      + "</table>"
+    + "</div>"
 
-        # Auto-refresh today balance via API
-        + "<script>"
-          "async function refreshTodayBalance(){"
-            "try{"
-              "const r = await fetch('/api/today_balance', {cache:'no-store'});"
-              "if(!r.ok) return;"
-              "const j = await r.json();"
-              "const el = document.getElementById('todayBalanceValue');"
-              "if(el) el.textContent = '$' + Number(j.balance).toFixed(2);"
-            "}catch(e){}"
-          "}"
-          "refreshTodayBalance();"
-          "setInterval(refreshTodayBalance, 30000);"
-          "window.addEventListener('focus', refreshTodayBalance);"
-        + "</script>"
+    # Auto-refresh JS
+    + "<script>"
+      "async function refreshTodayBalance(){"
+        "try{"
+          "const r = await fetch('/api/today_balance', {cache:'no-store'});"
+          "if(!r.ok) return;"
+          "const j = await r.json();"
+          "const el = document.getElementById('todayBalanceValue');"
+          "if(el) el.textContent = '$' + Number(j.balance).toFixed(2);"
+        "}catch(e){}"
+      "}"
+      "refreshTodayBalance();"
+      "setInterval(refreshTodayBalance, 30000);"
+      "window.addEventListener('focus', refreshTodayBalance);"
+    + "</script>"
 
-        + "</body></html>"
-    )
+    # ✅ Tutorial scripts (fixed formatting!)
++ '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+)
     return HTMLResponse(html)
-
-
 # -------- Add Transaction --------
 @app.post("/tx")
 async def add_tx(date:str=Form(...), kind:str=Form(...), amount:float=Form(...), category:str=Form(...), memo:str=Form("")):
@@ -666,19 +748,24 @@ async def list_transactions():
         for r in rows
     )
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <h2>Transactions</h2>
-      <table>
-        <tr><th>Date</th><th>Kind</th><th>Category</th><th>Amount</th><th>Memo</th><th>Actions</th></tr>
-        {table}
-      </table>
-      <form method="post" action="/transactions/clear" onsubmit="return confirm('Delete ALL transactions?');">
-        <button type="submit" style="background:#c00; color:#fff; margin-top:1rem;">🗑 Clear All</button>
-      </form>
-    </div>
-    </body></html>""")
+    return HTMLResponse(
+    "<!doctype html><html><head>"
+    + STYLE
+    + "</head><body>"
+    + NAVBAR
+    + "<div class='card'>"
+    + "<h2>Transactions</h2>"
+    + "<table>"
+    + "<tr><th>Date</th><th>Kind</th><th>Category</th><th>Amount</th><th>Memo</th><th>Actions</th></tr>"
+    + table
+    + "</table>"
+    + "<form method='post' action='/transactions/clear' onsubmit=\"return confirm('Delete ALL transactions?');\">"
+    + "<button type='submit' style='background:#c00; color:#fff; margin-top:1rem;'>🗑 Clear All</button>"
+    + "</form>"
+    + "</div>"
+    + "</body></html>"
+)
+
 
 @app.get("/transactions/edit/{tid}", response_class=HTMLResponse)
 async def edit_transaction(tid:int):
@@ -687,22 +774,46 @@ async def edit_transaction(tid:int):
     r = cur.fetchone(); conn.close()
     if not r: return PlainTextResponse("Not found", status_code=404)
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-    <h2>Edit Transaction</h2>
-    <form method="post" action="/transactions/update/{tid}">
-      <label>Date: <input type="date" name="date" value="{r['ts'][:10]}"></label><br>
-      <label>Kind: <select name="kind">
-        <option value="income" {"selected" if r['kind']=="income" else ""}>Income</option>
-        <option value="expense" {"selected" if r['kind']=="expense" else ""}>Expense</option>
-      </select></label><br>
-      <label>Category: <input name="category" value="{r['category']}"></label><br>
-      <label>Amount: <input type="number" step="0.01" name="amount" value="{r['amount']}"></label><br>
-      <label>Memo: <input name="memo" value="{r['memo'] or ''}"></label><br>
-      <button type="submit">Save</button>
-    </form>
-    </div></body></html>""")
+    return HTMLResponse("<!doctype html><html><head>"
+        + STYLE
+        + "</head><body>"
+        + NAVBAR
+        + "<div class='card'>"
+        + "<h2>Edit Transaction</h2>"
+        + "<form method='post' action='/transactions/update/" + str(tid) + "'>"
+          + "<label>Date: <input type='date' name='date' value='" + r['ts'][:10] + "'></label><br>"
+          + "<label>Kind: <select name='kind'>"
+            + "<option value='income' " + ("selected" if r['kind']=="income" else "") + ">Income</option>"
+            + "<option value='expense' " + ("selected" if r['kind']=="expense" else "") + ">Expense</option>"
+          + "</select></label><br>"
+          + "<label>Category: <input name='category' value='" + r['category'] + "'></label><br>"
+          + "<label>Amount: <input type='number' step='0.01' name='amount' value='" + str(r['amount']) + "'></label><br>"
+          + "<label>Memo: <input name='memo' value='" + (r['memo'] or '') + "'></label><br>"
+          + "<button type='submit'>Save</button>"
+        + "</form>"
+        + "</div>"
+        + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+
+    )
 
 @app.post("/transactions/update/{tid}")
 async def update_transaction(tid:int, date:str=Form(...), kind:str=Form(...), category:str=Form(...), amount:float=Form(...), memo:str=Form("")):
@@ -730,21 +841,45 @@ async def clear_all_transactions():
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_form():
     sb = get_param("starting_balance", "0")
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <form method="post" action="/settings">
-        <label>Starting Balance: <input name="starting_balance" value="{sb}" type="number" step="0.01"></label>
-        <button type="submit">Save</button>
-      </form>
-    </div>
-    <div class="card" style="margin-top:1rem;">
-      <form method="post" action="/clear_budgets" onsubmit="return confirm('Are you sure you want to reset ALL budgets to 0?');">
-        <button type="submit" style="background:#c00; color:#fff;">🗑 Reset All Budgets</button>
-      </form>
-    </div>
-    </body></html>""")
+    return HTMLResponse("<!doctype html><html><head>"
+        + STYLE
+        + '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
+        + "</head><body>"
+        + NAVBAR
+        + "<div class='card'>"
+          + "<form method='post' action='/settings'>"
+            + "<label>Starting Balance: <input name='starting_balance' value='" + sb + "' type='number' step='0.01'></label>"
+            + "<button type='submit'>Save</button>"
+          + "</form>"
+        + "</div>"
+        + "<div class='card' style='margin-top:1rem;'>"
+          + "<form method='post' action='/clear_budgets' onsubmit=\"return confirm('Are you sure you want to reset ALL budgets to 0?');\">"
+            + "<button type='submit' style='background:#c00; color:#fff;'>🗑 Reset All Budgets</button>"
+          + "</form>"
+        + "</div>"
+        + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
 
+    )
+   
 @app.post("/settings")
 async def settings_save(starting_balance: float = Form(0.0)):
     set_param("starting_balance", str(starting_balance))
@@ -769,11 +904,36 @@ async def budgets_form():
         for r in rows
     )
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card"><form method="post" action="/budgets">
-    <table><tr><th>Category</th><th>Weekly Amount</th></tr>{table}</table>
-    <button type="submit">Save</button></form></div></body></html>""")
+    return HTMLResponse("<!doctype html><html><head>"
+        + STYLE
+        + '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
+        + "</head><body>"
+        + NAVBAR
+        + "<div class='card'><form method='post' action='/budgets'>"
+        + "<table><tr><th>Category</th><th>Weekly Amount</th></tr>" + table + "</table>"
+        + "<button type='submit'>Save</button></form></div>"
+        + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+
+    )
 
 @app.post("/budgets")
 async def budgets_save(request: Request):
@@ -819,6 +979,7 @@ async def daily_page(month: str = ""):
 
     return HTMLResponse(
         "<!doctype html><html><head>" + STYLE + """
+        '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
           .daily-toolbar { display:flex; align-items:center; gap:.5rem; margin:.5rem 0 1rem; }
@@ -1070,6 +1231,7 @@ async def calendar_page(month: str = ""):
         + STYLE
         + calendar_css
         + "</head><body>"
+        '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
         + NAVBAR
         + "<h2 class='calendar-header'>" + month_name + " " + str(y) + "</h2>"
         + "<div class='nav'>"
@@ -1185,51 +1347,70 @@ async def schedules_page():
         for r in rows
     )
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <h2>Add Schedule</h2>
-      <form method="post" action="/schedules/new">
-        <label>Name: <input name="name" required></label><br>
-        <label>Category: <input name="category" required></label><br>
-        <label>Amount: <input type="number" step="0.01" name="amount" required></label><br>
-        <label>Kind: 
-          <select name="kind">
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </select>
-        </label><br>
-        <label>Frequency:
-          <select name="frequency">
-            <option value="weekly">Weekly</option>
-            <option value="biweekly">Biweekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </label><br>
-        <label>Start Date: <input type="date" name="start_date" required></label><br>
-        <label>Day of Week:
-          <select name="dow">
-            <option value="0">Monday</option>
-            <option value="1">Tuesday</option>
-            <option value="2">Wednesday</option>
-            <option value="3">Thursday</option>
-            <option value="4">Friday</option>
-            <option value="5">Saturday</option>
-            <option value="6">Sunday</option>
-          </select>
-        </label><br>
-        <button type="submit">Add</button>
-      </form>
-    </div>
+    return HTMLResponse("<!doctype html><html><head>"
+        + STYLE
+        + '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
+        + "</head><body>"
+        + NAVBAR
+        + "<div class='card'>"
+          + "<h2>Add Schedule</h2>"
+          + "<form method='post' action='/schedules/new'>"
+            + "<label>Name: <input name='name' required></label><br>"
+            + "<label>Category: <input name='category' required></label><br>"
+            + "<label>Amount: <input type='number' step='0.01' name='amount' required></label><br>"
+            + "<label>Kind: <select name='kind'>"
+              + "<option value='income'>Income</option>"
+              + "<option value='expense'>Expense</option>"
+            + "</select></label><br>"
+            + "<label>Frequency: <select name='frequency'>"
+              + "<option value='weekly'>Weekly</option>"
+              + "<option value='biweekly'>Biweekly</option>"
+              + "<option value='monthly'>Monthly</option>"
+            + "</select></label><br>"
+            + "<label>Start Date: <input type='date' name='start_date' required></label><br>"
+            + "<label>Day of Week: <select name='dow'>"
+              + "<option value='0'>Monday</option>"
+              + "<option value='1'>Tuesday</option>"
+              + "<option value='2'>Wednesday</option>"
+              + "<option value='3'>Thursday</option>"
+              + "<option value='4'>Friday</option>"
+              + "<option value='5'>Saturday</option>"
+              + "<option value='6'>Sunday</option>"
+            + "</select></label><br>"
+            + "<button type='submit'>Add</button>"
+          + "</form>"
+        + "</div>"
 
-    <div class="card">
-      <h2>Schedules</h2>
-      <table>
-        <tr><th>ID</th><th>Name</th><th>Category</th><th>Amount</th><th>Kind</th><th>Freq</th><th>Start</th><th>DOW</th><th>Actions</th></tr>
-        {table}
-      </table>
-    </div>
-    </body></html>""")
+        + "<div class='card'>"
+          + "<h2>Schedules</h2>"
+          + "<table>"
+            + "<tr><th>ID</th><th>Name</th><th>Category</th><th>Amount</th><th>Kind</th><th>Freq</th><th>Start</th><th>DOW</th><th>Actions</th></tr>"
+            + table +
+          "</table>"
+        + "</div>"
+
+       + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+
+    )
 
 
 @app.post("/schedules/new")
@@ -1251,37 +1432,54 @@ async def schedule_edit(sid:int):
     r = cur.fetchone(); conn.close()
     if not r: return PlainTextResponse("Not found", status_code=404)
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <h2>Edit Schedule</h2>
-      <form method="post" action="/schedules/update/{sid}">
-        <label>Name: <input name="name" value="{r['name']}"></label><br>
-        <label>Category: <input name="category" value="{r['category']}"></label><br>
-        <label>Amount: <input type="number" step="0.01" name="amount" value="{r['amount']}"></label><br>
-        <label>Kind: 
-          <select name="kind">
-            <option value="income" {"selected" if r['kind']=="income" else ""}>Income</option>
-            <option value="expense" {"selected" if r['kind']=="expense" else ""}>Expense</option>
-          </select>
-        </label><br>
-        <label>Frequency:
-          <select name="frequency">
-            <option value="weekly" {"selected" if r['frequency']=="weekly" else ""}>Weekly</option>
-            <option value="biweekly" {"selected" if r['frequency']=="biweekly" else ""}>Biweekly</option>
-            <option value="monthly" {"selected" if r['frequency']=="monthly" else ""}>Monthly</option>
-          </select>
-        </label><br>
-        <label>Start Date: <input type="date" name="start_date" value="{r['start_date']}"></label><br>
-        <label>Day of Week:
-          <select name="dow">
-            {''.join(f"<option value='{i}' {'selected' if r['dow']==i else ''}>{day}</option>" 
-                     for i,day in enumerate(['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']))}
-          </select>
-        </label><br>
-        <button type="submit">Save</button>
-      </form>
-    </div></body></html>""")
+    return HTMLResponse("<!doctype html><html><head>"
+        + STYLE
+        + '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
+        + "</head><body>"
+        + NAVBAR
+        + "<div class='card'>"
+          + "<h2>Edit Schedule</h2>"
+          + "<form method='post' action='/schedules/update/" + str(sid) + "'>"
+            + "<label>Name: <input name='name' value='" + r['name'] + "'></label><br>"
+            + "<label>Category: <input name='category' value='" + r['category'] + "'></label><br>"
+            + "<label>Amount: <input type='number' step='0.01' name='amount' value='" + str(r['amount']) + "'></label><br>"
+            + "<label>Kind: <select name='kind'>"
+              + "<option value='income'" + (" selected" if r['kind']=="income" else "") + ">Income</option>"
+              + "<option value='expense'" + (" selected" if r['kind']=="expense" else "") + ">Expense</option>"
+            + "</select></label><br>"
+            + "<label>Frequency: <select name='frequency'>"
+              + "<option value='weekly'"   + (" selected" if r['frequency']=="weekly" else "")   + ">Weekly</option>"
+              + "<option value='biweekly'" + (" selected" if r['frequency']=="biweekly" else "") + ">Biweekly</option>"
+              + "<option value='monthly'"  + (" selected" if r['frequency']=="monthly" else "")  + ">Monthly</option>"
+            + "</select></label><br>"
+            + "<label>Start Date: <input type='date' name='start_date' value='" + r['start_date'] + "'></label><br>"
+            + "<label>Day of Week: <select name='dow'>" + dow_options + "</select></label><br>"
+            + "<button type='submit'>Save</button>"
+          + "</form>"
+        + "</div>"
+
+       + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+
+    )
 
 
 @app.post("/schedules/update/{sid}")
@@ -1322,13 +1520,34 @@ async def occ_view(oid:int):
     if not o:
         return PlainTextResponse("Not found", status_code=404)
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-    <h2>{o['name']} on {o['date']}</h2>
-    <p>Amount: ${o['amount']} | Category: {o['category']} | Status: {o['status']}</p>
-    </div></body></html>""")
+    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    + NAVBAR
+    + "<div class='card'>"
+      + "<h2>" + o['name'] + " on " + o['date'] + "</h2>"
+      + "<p>Amount: $" + str(o['amount']) + " | Category: " + o['category'] + " | Status: " + o['status'] + "</p>"
+    + "</div>"
+    + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
 
+)
 # -------- Glossary --------
 @app.get("/glossary", response_class=HTMLResponse)
 async def glossary_page():
@@ -1348,17 +1567,39 @@ async def glossary_page():
 
     rows = "".join(f"<tr><td><strong>{term}</strong></td><td>{desc}</td></tr>" for term, desc in glossary)
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <h2>📖 Glossary / Index</h2>
-      <p>Quick reference for terms used in E.A.S.I.E.</p>
-      <table>
-        <tr><th>Term</th><th>Definition</th></tr>
-        {rows}
-      </table>
-    </div>
-    </body></html>""")
+    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    + "<link href='https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css' rel='stylesheet'>"
+    + NAVBAR
+    + "<div class='card'>"
+      + "<h2>📖 Glossary / Index</h2>"
+      + "<p>Quick reference for terms used in E.A.S.I.E.</p>"
+      + "<table>"
+        + "<tr><th>Term</th><th>Definition</th></tr>"
+        + rows
+      + "</table>"
+    + "</div>"
+    + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
++ "<script>"
++ "function startTutorial() {"
++ "  introJs().setOptions({"
++ "    steps: ["
++ "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
++ "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
++ "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
++ "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
++ "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
++ "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
++ "    ],"
++ "    showProgress: true,"
++ "    nextLabel: 'Next →',"
++ "    prevLabel: '← Back',"
++ "    doneLabel: 'Got it!'"
++ "  }).start();"
++ "}"
++ "</script>"
++ "</body></html>"
+
+)
 GLOSSARY = {
     "Budget": "A weekly limit you set for each category (e.g., Food, Rent).",
     "Transaction": "A single income or expense entry you add. Includes date, amount, category, and memo.",
@@ -1434,48 +1675,77 @@ async def wishlist_page():
       </tr>
     """ for r in enriched)
 
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}
+    return HTMLResponse(
+    "<!doctype html><html><head>" 
+    + STYLE
+    + """
     <style>
-      .health-badge {{
+      .health-badge {
         display:inline-block; padding:.1rem .5rem; border-radius:8px; font-weight:800; letter-spacing:.02em;
-      }}
-      .health-green  {{ background:#eaffea; color:#0b6115; box-shadow:0 0 10px rgba(0,255,0,.35); }}
-      .health-yellow {{ background:#fff8d9; color:#7a6400; box-shadow:0 0 10px rgba(255,215,0,.35); }}
-      .health-red    {{ background:#ffe8e8; color:#7d0a0a; box-shadow:0 0 10px rgba(255,0,0,.35); }}
-      .warn-btn {{
+      }
+      .health-green  { background:#eaffea; color:#0b6115; box-shadow:0 0 10px rgba(0,255,0,.35); }
+      .health-yellow { background:#fff8d9; color:#7a6400; box-shadow:0 0 10px rgba(255,215,0,.35); }
+      .health-red    { background:#ffe8e8; color:#7d0a0a; box-shadow:0 0 10px rgba(255,0,0,.35); }
+      .warn-btn {
         margin-left:.35rem; border:none; background:transparent; cursor:pointer; font-size:1rem;
-      }}
-      .warn-panel {{
+      }
+      .warn-panel {
         background:#0a1f44; color:#FFD700; border:1px solid #FFD700; border-radius:8px; padding:.4rem .6rem; margin-top:.35rem;
-      }}
-      .wl-form label {{ display:inline-block; margin:.25rem .4rem .25rem 0; }}
-      .wl-form input, .wl-form select {{ padding:.4rem; border-radius:6px; border:1px solid #888; }}
+      }
+      .wl-form label { display:inline-block; margin:.25rem .4rem .25rem 0; }
+      .wl-form input, .wl-form select { padding:.4rem; border-radius:6px; border:1px solid #888; }
     </style>
+    <link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">
     </head><body>
-    {NAVBAR}
+    """
+    + NAVBAR
+    + """
     <div class="card">
       <h2>📝 Wishlist</h2>
       <form class="wl-form" method="post" action="/wishlist/new">
         <label>Item <input name="item" required></label>
         <label>Category <input name="category" placeholder="e.g., entertainment" required></label>
         <label>Price $ <input type="number" step="0.01" name="price" required></label>
-        <label>Target Date <input type="date" name="target_date" value="{date.today().isoformat()}" required></label>
+        <label>Target Date <input type="date" name="target_date" value=""" + "\"" + date.today().isoformat() + "\"" + """ required></label>
         <button type="submit">Add</button>
       </form>
     </div>
     <div class="card">
       <table>
         <tr><th>Item</th><th>Category</th><th>Price</th><th>Target Date</th><th>Health</th><th>Why / Alternatives</th><th>Actions</th></tr>
-        {rows_html if rows_html else "<tr><td colspan='7' style='opacity:.7'>No wishes yet — add one above.</td></tr>"}
+        """
+    + (rows_html if rows_html else "<tr><td colspan='7' style='opacity:.7'>No wishes yet — add one above.</td></tr>")
+    + """
       </table>
     </div>
     <script>
-      function toggleWarn(btn){{
+      function toggleWarn(btn){
         const panel = btn.nextElementSibling;
         panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-      }}
+      }
     </script>
-    </body></html>""")
+    """
+    + '<script src="https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js"></script>'
+    + "<script>"
+    + "function startTutorial() {"
+    + "  introJs().setOptions({"
+    + "    steps: ["
+    + "      { element: document.querySelector('#nav-home'), intro: 'Your Dashboard — see today’s balance and budgets.' },"
+    + "      { element: document.querySelector('#nav-daily'), intro: 'Daily View — charts your income, expenses, and running balance.' },"
+    + "      { element: document.querySelector('#nav-calendar'), intro: 'Calendar — month-by-month view of income, expenses, and balances.' },"
+    + "      { element: document.querySelector('#nav-wishlist'), intro: 'Wishlist — track things you want to buy and see if they fit your budget.' },"
+    + "      { element: document.querySelector('#add-transaction'), intro: 'Add Transaction — record income or expenses here.' },"
+    + "      { element: document.querySelector('#nav-advisor'), intro: 'AI Advisor — get insights and feedback on your financial picture.' }"
+    + "    ],"
+    + "    showProgress: true,"
+    + "    nextLabel: 'Next →',"
+    + "    prevLabel: '← Back',"
+    + "    doneLabel: 'Got it!'"
+    + "  }).start();"
+    + "}"
+    + "</script>"
+    + "</body></html>"
+)
 
 @app.post("/wishlist/new")
 async def wishlist_new(item: str = Form(...), category: str = Form(...), price: float = Form(...), target_date: str = Form(...)):
@@ -1492,20 +1762,43 @@ async def wishlist_edit(wid: int):
     conn = get_db(); cur = conn.cursor()
     cur.execute("SELECT * FROM wishlist WHERE id=?", (wid,))
     r = cur.fetchone(); conn.close()
-    if not r: return PlainTextResponse("Not found", status_code=404)
-    return HTMLResponse(f"""<!doctype html><html><head>{STYLE}</head><body>
-    {NAVBAR}
-    <div class="card">
-      <h2>Edit Wish</h2>
-      <form method="post" action="/wishlist/update/{wid}">
-        <label>Item <input name="item" value="{r['item']}" required></label><br>
-        <label>Category <input name="category" value="{r['category']}" required></label><br>
-        <label>Price $ <input type="number" step="0.01" name="price" value="{r['price']}" required></label><br>
-        <label>Target Date <input type="date" name="target_date" value="{r['target_date']}" required></label><br>
-        <button type="submit">Save</button>
-        <a href="/wishlist" style="margin-left:.5rem">Cancel</a>
-      </form>
-    </div></body></html>""")
+    if not r:
+        return PlainTextResponse("Not found", status_code=404)
+
+    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    + NAVBAR
+    + "<div class='card'>"
+      + "<h2>Edit Wish</h2>"
+      + "<form method='post' action='/wishlist/update/" + str(wid) + "'>"
+        + "<label>Item <input name='item' value='" + r['item'] + "' required></label><br>"
+        + "<label>Category <input name='category' value='" + r['category'] + "' required></label><br>"
+        + "<label>Price $ <input type='number' step='0.01' name='price' value='" + str(r['price']) + "' required></label><br>"
+        + "<label>Target Date <input type='date' name='target_date' value='" + r['target_date'] + "' required></label><br>"
+        + "<button type='submit'>Save</button>"
+        + "<a href='/wishlist' style='margin-left:.5rem'>Cancel</a>"
+      + "</form>"
+    + "</div>"
+    + "<script src='https://cdn.jsdelivr.net/npm/intro.js/minified/intro.min.js'></script>"
+    + "<script>"
+      "function startTutorial() {"
+      "  introJs().setOptions({"
+      "    steps: ["
+      "      { element: document.querySelector('#nav-home'), intro: \"Your Dashboard — see today’s balance and budgets.\" },"
+      "      { element: document.querySelector('#nav-daily'), intro: \"Daily View — charts your income, expenses, and running balance.\" },"
+      "      { element: document.querySelector('#nav-calendar'), intro: \"Calendar — month-by-month view of income, expenses, and balances.\" },"
+      "      { element: document.querySelector('#nav-wishlist'), intro: \"Wishlist — track things you want to buy and see if they fit your budget.\" },"
+      "      { element: document.querySelector('#add-transaction'), intro: \"Add Transaction — record income or expenses here.\" },"
+      "      { element: document.querySelector('#nav-advisor'), intro: \"AI Advisor — get insights and feedback on your financial picture.\" }"
+      "    ],"
+      "    showProgress: true,"
+      "    nextLabel: 'Next →',"
+      "    prevLabel: '← Back',"
+      "    doneLabel: 'Got it!'"
+      "  }).start();"
+      "}"
+    + "</script>"
+    + "</body></html>"
+)
 
 @app.post("/wishlist/update/{wid}")
 async def wishlist_update(wid: int, item: str = Form(...), category: str = Form(...), price: float = Form(...), target_date: str = Form(...)):
@@ -1545,6 +1838,171 @@ async def wishlist_import_schedule(wid: int):
 @app.get("/api/today_balance")
 async def api_today_balance():
     return {"balance": running_balance_through(date.today())}
+    
+@app.post("/api/ai_chat")
+async def ai_chat(request: Request):
+    data = await request.json()
+    user_msg = data.get("message", "")
+
+    # Pull context from DB
+    conn = get_db(); cur = conn.cursor()
+
+    # Example: monthly category spend
+    cur.execute("""
+        SELECT category,
+               SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) as spent,
+               SUM(CASE WHEN kind='income'  THEN amount ELSE 0 END) as earned
+        FROM transactions
+        WHERE strftime('%Y-%m', ts) = strftime('%Y-%m', 'now')
+        GROUP BY category
+    """)
+    cat_rows = cur.fetchall()
+
+    cur.execute("SELECT SUM(amount) FROM transactions WHERE kind='expense'")
+    total_exp = float(cur.fetchone()[0] or 0)
+
+    cur.execute("SELECT SUM(amount) FROM transactions WHERE kind='income'")
+    total_inc = float(cur.fetchone()[0] or 0)
+
+    conn.close()
+
+    # Build context summary
+    category_summary = ", ".join([f"{r['category']}: ${r['spent']:.2f}" for r in cat_rows])
+    context = f"""
+    Current month income: ${total_inc:.2f}, expenses: ${total_exp:.2f}.
+    Breakdown by category: {category_summary}.
+    User message: {user_msg}
+    """
+
+    # Restrictive system prompt
+    system_msg = """You are EASIE’s built-in AI financial insights assistant.
+    You ONLY analyze the user’s spending, budgets, and balances based on data provided.
+    You NEVER give investment advice, tax advice, or specific financial directives.
+    You only provide INSIGHT, TRENDS, and CONTEXT (e.g., overspending in categories, balance projections, savings opportunities).
+    Stay concise, practical, and easy to read."""
+
+    # Call OpenAI
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",  # lighter, cheaper, good for realtime
+        messages=[
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": context}
+        ],
+        max_tokens=300
+    )
+
+    ai_reply = resp.choices[0].message.content
+    return {"reply": ai_reply}
+@app.get("/advisor", response_class=HTMLResponse)
+async def advisor_placeholder():
+    return HTMLResponse(
+        "<!doctype html><html><head>"
+        + STYLE
+        + """
+        <style>
+          #interestBtn { 
+            margin-top:1rem; 
+            background:#FFD700; 
+            color:#0a1f44; 
+            font-weight:bold; 
+            padding:.6rem 1.2rem; 
+            border-radius:6px; 
+            cursor:pointer; 
+          }
+          #interestBtn:hover { background:#B8860B; color:#fff; }
+        </style>
+        </head><body>
+        """
+        + NAVBAR
+        + """
+        <div class='card' style='text-align:center; padding:2rem;'>
+          <h2>🤖 AI Finance Advisor</h2>
+          <p style='font-size:1.2rem; margin-top:1rem;'>
+            This feature is <strong>under construction</strong>.
+          </p>
+          <p style='margin-top:1rem; font-size:1rem; opacity:.85;'>
+            Upgrade to <span style='color:#FFD700; font-weight:bold;'>E.A.S.I.E. Pro</span>
+            to unlock AI-powered financial insights.
+          </p>
+
+          <button id="interestBtn" onclick="submitInterest()">✅ I’m Interested</button>
+          <p style="margin-top:1rem; font-size:1.1rem;">
+            <span id="interestCount">0</span> people have signed up!
+          </p>
+        </div>
+
+        <script>
+        async function fetchCount() {
+          try {
+            let r = await fetch("/api/advisor_interest_count");
+            let j = await r.json();
+            document.getElementById("interestCount").textContent = j.count;
+          } catch(e) {
+            console.error("Failed to fetch count", e);
+          }
+        }
+
+        async function submitInterest() {
+          try {
+            let r = await fetch("/advisor/interest", {method:"POST"});
+            if(r.ok){
+              fetchCount(); // refresh counter
+              alert("✅ Thanks for your interest! You’ve been counted.");
+            } else {
+              alert("⚠️ Couldn’t record your interest. Try again later.");
+            }
+          } catch(e) {
+            alert("⚠️ Network error.");
+          }
+        }
+
+        document.addEventListener("DOMContentLoaded", fetchCount);
+        </script>
+        </body></html>
+        """
+    )
+
+@app.post("/advisor/interest")
+async def advisor_interest():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("INSERT INTO advisor_interest DEFAULT VALUES")
+    conn.commit(); conn.close()
+    return {"ok": True}  # keep it simple for JS
+
+@app.get("/api/advisor_interest_count")
+async def advisor_interest_count():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM advisor_interest")
+    count = cur.fetchone()[0]
+    conn.close()
+    return {"count": count}
+
+
+@app.post("/api/advisor")
+async def advisor_api(request: Request):
+    data = await request.json()
+    user_message = data.get("message", "")
+
+    # Pull financial data
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT category, SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) as spent FROM transactions GROUP BY category")
+    summary = {r["category"]: float(r["spent"] or 0) for r in cur.fetchall()}
+    conn.close()
+
+    # Create a context prompt
+    context = f"User has spent: {json.dumps(summary)}. Give financial insights only, no advice."
+    
+    # Call OpenAI
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role":"system","content":"You are E.A.S.I.E.'s AI Advisor. Provide financial insights only, never definitive financial advice."},
+            {"role":"user","content": context + " " + user_message}
+        ]
+    )
+
+    return {"reply": response.choices[0].message.content}
+
 # -------- Health --------
 @app.get("/health")
 async def health(): return {"ok":True}
