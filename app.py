@@ -292,7 +292,7 @@ def daterange(d0:date,d1:date):
         yield cur
         cur += timedelta(days=1)
 def calendar_series_for_month(y: int, m: int):
-    """Return labels, income, expense, running for month y-m using the same logic as /calendar."""
+    """Return labels, income, expense, running for month y-m with rollover balance."""
     start = month_start(y, m)
     end   = month_end(y, m)
 
@@ -310,7 +310,7 @@ def calendar_series_for_month(y: int, m: int):
     posted = {r["d"]: (float(r["inc"] or 0), float(r["exp"] or 0)) for r in cur.fetchall()}
     conn.close()
 
-    # add generated occurrences
+    # add generated occurrences (recurring items)
     occs = all_occurrences(end)
     for o in occs:
         if start.isoformat() <= o["date"] <= end.isoformat():
@@ -321,9 +321,9 @@ def calendar_series_for_month(y: int, m: int):
                 exp += float(o["amount"])
             posted[o["date"]] = (inc, exp)
 
-    # walk days, accumulate running like calendar
-    seed_day = start - timedelta(days=1)
-    running = running_balance_through(seed_day) 
+    # Rollover: start with balance up to day before the 1st
+    running = running_balance_through(start - timedelta(days=1))
+
     labels, incs, exps, runs = [], [], [], []
     for d in daterange(start, end):
         ds = d.isoformat()
@@ -334,6 +334,9 @@ def calendar_series_for_month(y: int, m: int):
         incs.append(round(inc, 2))
         exps.append(round(exp, 2))
         runs.append(round(running, 2))
+        
+    return labels, incs, exps, runs
+
 def calendar_balance_for_day(d: date) -> float:
     # start with balance up to the day before
     running = running_balance_through(d - timedelta(days=1))
@@ -363,7 +366,6 @@ def calendar_balance_for_day(d: date) -> float:
 
     return running
 
-    return labels, incs, exps, runs
 # ---------------- App ----------------
 TEMPLATES = Environment(loader=FileSystemLoader(searchpath="."), autoescape=select_autoescape())
 
