@@ -12,13 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles   # ✅ add this
 from pydantic import BaseModel, condecimal
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from openai import OpenAI
 import os
 DB_PATH = os.getenv("EASIE_DB", "easie.db")
 
 # ---------------- App ----------------
 app = FastAPI(title="EASIE")
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ✅ Mount static so /static/... works
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1881,18 +1879,7 @@ async def ai_chat(request: Request):
     You only provide INSIGHT, TRENDS, and CONTEXT (e.g., overspending in categories, balance projections, savings opportunities).
     Stay concise, practical, and easy to read."""
 
-    # Call OpenAI
-    resp = client.chat.completions.create(
-        model="gpt-4o-mini",  # lighter, cheaper, good for realtime
-        messages=[
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": context}
-        ],
-        max_tokens=300
-    )
-
-    ai_reply = resp.choices[0].message.content
-    return {"reply": ai_reply}
+    
 @app.get("/advisor", response_class=HTMLResponse)
 async def advisor_placeholder():
     return HTMLResponse(
@@ -1977,31 +1964,6 @@ async def advisor_interest_count():
     conn.close()
     return {"count": count}
 
-
-@app.post("/api/advisor")
-async def advisor_api(request: Request):
-    data = await request.json()
-    user_message = data.get("message", "")
-
-    # Pull financial data
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT category, SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) as spent FROM transactions GROUP BY category")
-    summary = {r["category"]: float(r["spent"] or 0) for r in cur.fetchall()}
-    conn.close()
-
-    # Create a context prompt
-    context = f"User has spent: {json.dumps(summary)}. Give financial insights only, no advice."
-    
-    # Call OpenAI
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role":"system","content":"You are E.A.S.I.E.'s AI Advisor. Provide financial insights only, never definitive financial advice."},
-            {"role":"user","content": context + " " + user_message}
-        ]
-    )
-
-    return {"reply": response.choices[0].message.content}
 
 # -------- Health --------
 @app.get("/health")
