@@ -1209,8 +1209,13 @@ async def calendar_page(month: str = ""):
         ds = d.isoformat()
         inc, exp = posted.get(ds, (0.0, 0.0))
       
-    running += (inc - exp)
-    days.append({"date": ds, "inc": inc, "exp": exp, "running": running})
+        running += (inc - exp)
+        days.append({
+        "date": ds, 
+        "inc": inc, 
+        "exp": exp, 
+        "running": running
+        })
 
     # labels & nav
     month_name = calendar.month_name[m]
