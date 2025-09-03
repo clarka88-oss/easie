@@ -1925,7 +1925,7 @@ async def wishlist_import_schedule(wid: int):
     
 @app.get("/api/today_balance")
 async def api_today_balance():
-    return {"balance": running_balance_through(date.today())}
+    return {"balance": calendar_balance_for_day(date.today())}
     
 @app.post("/api/ai_chat")
 async def ai_chat(request: Request):
@@ -2066,3 +2066,4 @@ def _startup(): init_db()
 if __name__=="__main__":
     init_db(); import uvicorn
     uvicorn.run(app,host="0.0.0.0",port=8000,reload=True)
+
