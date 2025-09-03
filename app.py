@@ -329,7 +329,7 @@ def calendar_series_for_month(y: int, m: int):
         ds = d.isoformat()
         inc, exp = posted.get(ds, (0.0, 0.0))
 
-            running += (inc - exp)
+        running += (inc - exp)
         labels.append(ds)
         incs.append(round(inc, 2))
         exps.append(round(exp, 2))
