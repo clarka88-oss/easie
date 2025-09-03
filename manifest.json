@@ -1,11 +1,10 @@
 {
   "name": "E.A.S.I.E.",
   "short_name": "EASIE",
-  "description": "Expense & Savings–Income Engine",
   "start_url": "/home",
   "display": "standalone",
   "background_color": "#0a1f44",
-  "theme_color": "#FFD700",
+  "theme_color": "#0a1f44",
   "icons": [
     {
       "src": "/static/icons/icon-192.png",
@@ -15,6 +14,22 @@
     {
       "src": "/static/icons/icon-512.png",
       "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icons/icon-167.png",
+      "sizes": "167x167",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icons/icon-152.png",
+      "sizes": "152x152",
       "type": "image/png"
     }
   ]
