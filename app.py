@@ -328,7 +328,7 @@ def calendar_series_for_month(y: int, m: int):
     for d in daterange(start, end):
         ds = d.isoformat()
         inc, exp = posted.get(ds, (0.0, 0.0))
-        if inc or exp:
+
             running += (inc - exp)
         labels.append(ds)
         incs.append(round(inc, 2))
@@ -1208,7 +1208,7 @@ async def calendar_page(month: str = ""):
     for d in daterange(start, end):
         ds = d.isoformat()
         inc, exp = posted.get(ds, (0.0, 0.0))
-        if inc or exp:
+      
             running += (inc - exp)
         days.append({"date": ds, "inc": inc, "exp": exp, "running": running})
 
