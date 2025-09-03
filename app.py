@@ -661,6 +661,9 @@ def dashboard():
         + '<meta name="theme-color" content="#0a1f44">'
         + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
         + '<meta name="apple-mobile-web-app-capable" content="yes">'
+        + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+        + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+
         + "</head><body>"
     '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
     + NAVBAR
@@ -984,7 +987,10 @@ async def daily_page(month: str = ""):
         + '<link rel="manifest" href="/static/manifest.json">'
         + '<meta name="theme-color" content="#0a1f44">'
         + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
-        + '<meta name="apple-mobile-web-app-capable" content="yes">'"""
+        + '<meta name="apple-mobile-web-app-capable" content="yes">'
+        + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+        + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+"""
         '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
@@ -1531,6 +1537,9 @@ async def occ_view(oid:int):
       + '<meta name="theme-color" content="#0a1f44">'
       + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
       + '<meta name="apple-mobile-web-app-capable" content="yes">'
+      + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+      + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+
     + "</head><body>"
     + NAVBAR
     + "<div class='card'>"
@@ -1583,6 +1592,9 @@ async def glossary_page():
       + '<meta name="theme-color" content="#0a1f44">'
       + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
       + '<meta name="apple-mobile-web-app-capable" content="yes">'
+      + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+      + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+
     + "</head><body>"
     + "<link href='https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css' rel='stylesheet'>"
     + NAVBAR
@@ -1786,6 +1798,9 @@ async def wishlist_edit(wid: int):
         + '<meta name="theme-color" content="#0a1f44">'
         + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
         + '<meta name="apple-mobile-web-app-capable" content="yes">'
+        + '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+        + '<meta name="apple-mobile-web-app-title" content="E.A.S.I.E.">'
+
     + "</head><body>"
     + NAVBAR
     + "<div class='card'>"
