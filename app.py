@@ -495,7 +495,6 @@ table {
   .card { margin-bottom: .8rem; }
   .nav a { display:block; margin:.4rem 0; }
 }
-
 </style>
 """
 # -------- Navbar (shared across all pages) --------
@@ -657,7 +656,11 @@ def dashboard():
 
     # Build HTML (no f-strings, so JS braces are safe)
     html = (
-        "<!doctype html><html><head>" + STYLE + "</head><body>"
+        "<!doctype html><html><head>" + STYLE 
+        + '<link rel="manifest" href="/static/manifest.json">'
+        + '<meta name="theme-color" content="#0a1f44">'
+        + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
+        + "</head><body>"
     '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
     + NAVBAR
     + "<h2>📊 Dashboard</h2>"
@@ -976,7 +979,10 @@ async def daily_page(month: str = ""):
     next_month = (date(y, m, calendar.monthrange(y, m)[1]) + timedelta(days=1)).strftime("%Y-%m")
 
     return HTMLResponse(
-        "<!doctype html><html><head>" + STYLE + """
+        "<!doctype html><html><head>" + STYLE 
+        + '<link rel="manifest" href="/static/manifest.json">'
+        + '<meta name="theme-color" content="#0a1f44">'
+        + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'"""
         '<link href="https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css" rel="stylesheet">'
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
@@ -1518,7 +1524,11 @@ async def occ_view(oid:int):
     if not o:
         return PlainTextResponse("Not found", status_code=404)
 
-    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    return HTMLResponse("<!doctype html><html><head>" + STYLE 
+      + '<link rel="manifest" href="/static/manifest.json">'
+      + '<meta name="theme-color" content="#0a1f44">'
+      + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
+    + "</head><body>"
     + NAVBAR
     + "<div class='card'>"
       + "<h2>" + o['name'] + " on " + o['date'] + "</h2>"
@@ -1565,7 +1575,11 @@ async def glossary_page():
 
     rows = "".join(f"<tr><td><strong>{term}</strong></td><td>{desc}</td></tr>" for term, desc in glossary)
 
-    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    return HTMLResponse("<!doctype html><html><head>" + STYLE 
+      + '<link rel="manifest" href="/static/manifest.json">'
+      + '<meta name="theme-color" content="#0a1f44">'
+      + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
+    + "</head><body>"
     + "<link href='https://cdn.jsdelivr.net/npm/intro.js/minified/introjs.min.css' rel='stylesheet'>"
     + NAVBAR
     + "<div class='card'>"
@@ -1763,7 +1777,11 @@ async def wishlist_edit(wid: int):
     if not r:
         return PlainTextResponse("Not found", status_code=404)
 
-    return HTMLResponse("<!doctype html><html><head>" + STYLE + "</head><body>"
+    return HTMLResponse("<!doctype html><html><head>" + STYLE 
+        + '<link rel="manifest" href="/static/manifest.json">'
+        + '<meta name="theme-color" content="#0a1f44">'
+        + '<link rel="apple-touch-icon" href="/static/icons/icon-192.png">'
+    + "</head><body>"
     + NAVBAR
     + "<div class='card'>"
       + "<h2>Edit Wish</h2>"
