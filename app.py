@@ -266,7 +266,35 @@ def compute_wish_health(item: str, category: str, price: float, target_date: Opt
     # 90-day forecast (warn if it drives balance < 0 at any point)
     td = datetime.fromisoformat(target_date).date() if (target_date and target_date.strip()) else today
     warn, details = forecast_negative_with_purchase(price, category, td)
+    
+def balance_through_inclusive(day: date) -> float:
+    """Return balance up to and including `day` with transactions + occurrences."""
+    # Start from starting balance
+    bal = float(get_param("starting_balance", "0") or 0)
 
+    # Transactions
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT
+          COALESCE(SUM(CASE WHEN kind='income'  THEN amount END),0) -
+          COALESCE(SUM(CASE WHEN kind='expense' THEN amount END),0)
+        FROM transactions
+        WHERE date(ts) <= ?
+    """, (day.isoformat(),))
+    tx_net = float(cur.fetchone()[0] or 0.0)
+    conn.close()
+    bal += tx_net
+
+    # Occurrences
+    occs = all_occurrences(day)
+    for o in occs:
+        if o["date"] <= day.isoformat():
+            if o["kind"] == "income":
+                bal += float(o["amount"])
+            else:
+                bal -= float(o["amount"])
+
+    return bal
     return {
         "status": status,                     # green | yellow | red
         "message": message,
@@ -363,34 +391,7 @@ def calendar_balance_for_day(d: date) -> float:
                 running += float(o["amount"])
             else:
                 running -= float(o["amount"])
-def balance_through_inclusive(day: date) -> float:
-    """Return balance up to and including `day` with transactions + occurrences."""
-    # Start from starting balance
-    bal = float(get_param("starting_balance", "0") or 0)
 
-    # Transactions
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("""
-        SELECT
-          COALESCE(SUM(CASE WHEN kind='income'  THEN amount END),0) -
-          COALESCE(SUM(CASE WHEN kind='expense' THEN amount END),0)
-        FROM transactions
-        WHERE date(ts) <= ?
-    """, (day.isoformat(),))
-    tx_net = float(cur.fetchone()[0] or 0.0)
-    conn.close()
-    bal += tx_net
-
-    # Occurrences
-    occs = all_occurrences(day)
-    for o in occs:
-        if o["date"] <= day.isoformat():
-            if o["kind"] == "income":
-                bal += float(o["amount"])
-            else:
-                bal -= float(o["amount"])
-
-    return bal
 
     return running
 
